@@ -4,12 +4,46 @@ import openai
 from typing import List, Dict
 
 # ---------------------------
-# Config / API key
+# Helper: get OpenAI API key
 # ---------------------------
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
-    st.warning("No OPENAI_API_KEY found in environment. Please set OPENAI_API_KEY before running.")
+def get_openai_api_key():
+    # 1. Try Streamlit secrets (if present)
+    try:
+        key = st.secrets["OPENAI_API_KEY"]
+        if key:
+            return key
+    except Exception:
+        pass
+    # 2. Try environment variable
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        return key
+    # 3. Fall back to asking user (secure input)
+    return None
+
+# ---------------------------
+# Streamlit UI: ask for key if missing
+# ---------------------------
+st.set_page_config(page_title="Naruto-style Chatbot (fan)", layout="wide")
+st.title("Naruto-style Chatbot — Fan-made (Dattebayo!)")
+
+api_key = get_openai_api_key()
+if not api_key:
+    st.warning("No OPENAI_API_KEY found in environment or Streamlit secrets. Enter it below to continue (only stored for this session).")
+    entered_key = st.text_input("OpenAI API key", type="password")
+    if entered_key:
+        # store in session for this run only
+        st.session_state["OPENAI_API_KEY"] = entered_key
+        api_key = entered_key
+
+# Use session key if set
+if not api_key and "OPENAI_API_KEY" in st.session_state:
+    api_key = st.session_state["OPENAI_API_KEY"]
+
+if not api_key:
     st.stop()
+
+openai.api_key = api_key
 
 # ---------------------------
 # Persona / system prompt
@@ -33,15 +67,11 @@ Assistant: Dattebayo!! Let's get down to making some brownies! First, preheat th
 # ---------------------------
 def init_session_state():
     if "messages" not in st.session_state:
-        # messages contain dicts with role: system/user/assistant and content
         st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if "history" not in st.session_state:
         st.session_state.history = []  # list of (user, assistant)
 
 def call_openai_chat(messages: List[Dict], model: str = "gpt-3.5-turbo", temperature: float = 0.8):
-    """
-    Call OpenAI ChatCompletion API and return assistant text.
-    """
     resp = openai.ChatCompletion.create(
         model=model,
         messages=messages,
@@ -56,9 +86,6 @@ def add_message_to_state(role: str, content: str):
 # ---------------------------
 # Streamlit UI
 # ---------------------------
-st.set_page_config(page_title="Naruto-style Chatbot (fan)", layout="wide")
-st.title("Naruto-style Chatbot — Fan-made (Dattebayo!)")
-
 init_session_state()
 
 col1, col2 = st.columns([3, 1])
@@ -90,7 +117,6 @@ with col1:
                 assistant_text = "Oops! I couldn't get a response. Try again later."
         add_message_to_state("assistant", assistant_text)
         st.session_state.history.append((user_input, assistant_text))
-        # Rerun to display updated conversation
         st.experimental_rerun()
 
 st.markdown("---")
