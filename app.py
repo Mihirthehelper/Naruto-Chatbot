@@ -1,7 +1,8 @@
 import os
 import streamlit as st
-import openai
 from typing import List, Dict
+from openai import OpenAI
+import openai.error
 
 # ---------------------------
 # Helper: get OpenAI API key
@@ -43,7 +44,8 @@ if not api_key and "OPENAI_API_KEY" in st.session_state:
 if not api_key:
     st.stop()
 
-openai.api_key = api_key
+# Create OpenAI client (new 1.0+ interface)
+client = OpenAI(api_key=api_key)
 
 # ---------------------------
 # Persona / system prompt
@@ -67,18 +69,29 @@ Assistant: Dattebayo!! Let's get down to making some brownies! First, preheat th
 # ---------------------------
 def init_session_state():
     if "messages" not in st.session_state:
+        # messages contain dicts with role: system/user/assistant and content
         st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if "history" not in st.session_state:
         st.session_state.history = []  # list of (user, assistant)
 
 def call_openai_chat(messages: List[Dict], model: str = "gpt-3.5-turbo", temperature: float = 0.8):
-    resp = openai.ChatCompletion.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=600,
-    )
-    return resp.choices[0].message["content"].strip()
+    """
+    Call OpenAI Chat Completions (openai-python 1.0+). Returns assistant text.
+    """
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=600,
+        )
+        # response shape: resp.choices[0].message.content
+        return resp.choices[0].message.content.strip()
+    except openai.error.OpenAIError as e:
+        # bubble up message for UI display
+        raise RuntimeError(f"OpenAI API error: {e}") from e
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error calling OpenAI: {e}") from e
 
 def add_message_to_state(role: str, content: str):
     st.session_state.messages.append({"role": role, "content": content})
@@ -113,10 +126,11 @@ with col1:
             try:
                 assistant_text = call_openai_chat(st.session_state.messages, model=model, temperature=temperature)
             except Exception as e:
-                st.error(f"API error: {e}")
+                st.error(str(e))
                 assistant_text = "Oops! I couldn't get a response. Try again later."
         add_message_to_state("assistant", assistant_text)
         st.session_state.history.append((user_input, assistant_text))
+        # Rerun to display updated conversation
         st.experimental_rerun()
 
 st.markdown("---")
