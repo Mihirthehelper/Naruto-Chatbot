@@ -2,7 +2,6 @@ import os
 import streamlit as st
 from typing import List, Dict
 from openai import OpenAI
-import openai.error
 
 # ---------------------------
 # Helper: get OpenAI API key
@@ -85,13 +84,10 @@ def call_openai_chat(messages: List[Dict], model: str = "gpt-3.5-turbo", tempera
             temperature=temperature,
             max_tokens=600,
         )
-        # response shape: resp.choices[0].message.content
         return resp.choices[0].message.content.strip()
-    except openai.error.OpenAIError as e:
-        # bubble up message for UI display
-        raise RuntimeError(f"OpenAI API error: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Unexpected error calling OpenAI: {e}") from e
+        # Generic handling so we don't depend on a specific error module import
+        raise RuntimeError(f"OpenAI API error: {e}") from e
 
 def add_message_to_state(role: str, content: str):
     st.session_state.messages.append({"role": role, "content": content})
